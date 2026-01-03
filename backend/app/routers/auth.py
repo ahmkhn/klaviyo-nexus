@@ -38,6 +38,7 @@ def basic_auth_header(client_id: str, client_secret: str) -> str:
 
 @router.get("/login")
 def login(db: Session = Depends(get_db)):
+    print(f"DEBUG: My Client ID is: '{KLAVIYO_CLIENT_ID}'")
     if not KLAVIYO_CLIENT_ID or not KLAVIYO_CLIENT_SECRET:
         raise HTTPException(status_code=500, detail="Missing Klaviyo OAuth env vars")
 
