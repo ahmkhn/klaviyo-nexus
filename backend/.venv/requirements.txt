@@ -1,0 +1,10 @@
+# --- Core Backend ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic-settings>=2.4.0
+
+# --- Networking & API ---
+httpx>=0.27.0
+
+# --- AI & Agent Layer ---
+openai>=1.50.0
