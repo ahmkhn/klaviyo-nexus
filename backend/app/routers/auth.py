@@ -124,5 +124,12 @@ async def callback(request: Request, db: Session = Depends(get_db)):
     db.commit()
 
     r = RedirectResponse(url=f"{FRONTEND_URL}/chat")
-    r.set_cookie(key="session_id", value=session_id, httponly=True, max_age=60 * 60 * 24 * 7)
+    r.set_cookie(
+        key="session_id", 
+        value=session_id, 
+        httponly=True, 
+        max_age=60 * 60 * 24 * 7,
+        samesite="lax",
+        secure=False # make this an env var for localhost vs production environments, needs to be True on prod
+    )
     return r
