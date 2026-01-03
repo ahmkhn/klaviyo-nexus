@@ -1,1 +1,16 @@
+# security & config
 backend/.venv
+backend/.env
+
+# database files
+*.db
+*.sqlite3
+
+# python files
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS files
+.DS_Store
