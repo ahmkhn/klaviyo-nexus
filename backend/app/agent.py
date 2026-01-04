@@ -25,7 +25,7 @@ async def run_chat_turn(user_message: str, chat_history: list, oauth_token: str)
 
         # 4. First Call (Does AI want to talk or use a tool?)
         response = client.chat.completions.create(
-            model="gpt-4-turbo",
+            model="gpt-5-mini",
             messages=chat_history,
             tools=openai_tools,
             tool_choice="auto"
