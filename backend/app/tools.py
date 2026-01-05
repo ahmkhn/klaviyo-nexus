@@ -28,6 +28,26 @@ TOOLS = [
             "additionalProperties": False
         }
     ),
+    # READ TOOL 3: Lists
+    Tool(
+        name="get_lists",
+        description="Fetch existing subscriber lists with their IDs and profile counts.",
+        inputSchema={
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False
+        }
+    ),
+    # READ TOOL 4: Segments
+    Tool(
+        name="get_segments",
+        description="Fetch available segments with their IDs and profile counts.",
+        inputSchema={
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False
+        }
+    ),
     # WRITE TOOL: Create List
     Tool(
         name="create_list",
@@ -73,15 +93,58 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         # --- TOOL: Get Campaigns ---
         elif name == "get_campaigns":
-            resp = await client.get("https://a.klaviyo.com/api/campaigns/?page[size]=5", headers=headers)
+            params = {
+                "filter": "equals(messages.channel,'email')"
+            }
+            resp = await client.get("https://a.klaviyo.com/api/campaigns/", params=params, headers=headers)
             if resp.status_code != 200:
                 return [TextContent(type="text", text=f"API Error {resp.status_code}: {resp.text}")]
             
             data = resp.json().get("data", [])
             if not data:
-                return [TextContent(type="text", text="No campaigns found.")]
+                return [TextContent(type="text", text="No email campaigns found.")]
             
             summary = [f"ID: {d['id']} | Name: {d['attributes']['name']} | Status: {d['attributes']['status']}" for d in data]
+            req = resp.request
+            print("METHOD:", req.method)
+            print("URL:", req.url)
+            print("BODY:", req.content)  # should be b"" for GET
+            return [TextContent(type="text", text="\n".join(summary))]
+
+        # --- TOOL: Get Lists ---
+        elif name == "get_lists":
+            resp = await client.get("https://a.klaviyo.com/api/lists/", headers=headers)
+            if resp.status_code != 200:
+                return [TextContent(type="text", text=f"API Error {resp.status_code}: {resp.text}")]
+            
+            data = resp.json().get("data", [])
+            if not data:
+                return [TextContent(type="text", text="No lists found.")]
+            
+            summary = []
+            for item in data:
+                attrs = item.get("attributes", {})
+                summary.append(
+                    f"ID: {item.get('id', 'unknown')} | Name: {attrs.get('name', 'Unknown')} | Profiles: {attrs.get('profile_count', 'n/a')}"
+                )
+            return [TextContent(type="text", text="\n".join(summary))]
+
+        # --- TOOL: Get Segments ---
+        elif name == "get_segments":
+            resp = await client.get("https://a.klaviyo.com/api/segments/", headers=headers)
+            if resp.status_code != 200:
+                return [TextContent(type="text", text=f"API Error {resp.status_code}: {resp.text}")]
+            
+            data = resp.json().get("data", [])
+            if not data:
+                return [TextContent(type="text", text="No segments found.")]
+            
+            summary = []
+            for item in data:
+                attrs = item.get("attributes", {})
+                summary.append(
+                    f"ID: {item.get('id', 'unknown')} | Name: {attrs.get('name', 'Unknown')} | Profiles: {attrs.get('profile_count', 'n/a')}"
+                )
             return [TextContent(type="text", text="\n".join(summary))]
 
         # --- TOOL: Create List ---
