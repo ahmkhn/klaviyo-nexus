@@ -65,7 +65,7 @@ export default function ChatPage() {
   }, [messages, isThinking]);
 
   // Mock function to simulate AI response 
-  const handleSend = async () => {
+  const handleSendFake = async () => {
     if (!input.trim()) return;
 
     const userMsg: Message = {
@@ -104,6 +104,64 @@ export default function ChatPage() {
       setMessages(prev => [...prev, aiMsg]);
       setIsThinking(false);
     }, 2000);
+  };
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+
+    // show user's msg instantly
+    const userMsg: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: input,
+        timestamp: new Date()
+    }
+
+    setMessages(prev=>[...prev, userMsg]);
+    setInput('')
+    setIsThinking(true);
+
+    // attempt to call the backend agent
+    // use cred "include" to send the session cookie
+    try{
+        const res = await fetch('http://localhost:8000/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', 
+            body: JSON.stringify({ 
+              message: userMsg.content,
+              history: messages.map(m => ({ role: m.role, content: m.content })) 
+            }),
+        });
+        
+        if(!res.ok) {
+            throw new Error(`Server error: ${res.status}`)
+        }
+        
+        const data = await res.json();
+
+        // if we reach this part, we have the data, so let's
+        // display the ai's message.
+        const aiMsg: Message = {
+            id: (Date.now()+1).toString(),
+            role: 'assistant',
+            content: data.content, // response from ai model
+            trace: data.trace || [], // tool's execution logs
+            timestamp: new Date()
+        }
+        setMessages(prev => [...prev, aiMsg])
+    } catch(error) {
+        console.error(error);
+        const errorMsg: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: "⚠️ Connection Error: I couldn't reach the Nexus Brain. Is Docker running?",
+            timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMsg]);
+    } finally {
+        setIsThinking(false);
+    }
   };
 
   return (
