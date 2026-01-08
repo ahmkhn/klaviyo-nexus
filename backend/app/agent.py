@@ -25,7 +25,7 @@ async def run_chat_turn(user_message: str, chat_history: list, oauth_token: str)
 
         # 4. First Call (Does AI want to talk or use a tool?)
         response = client.chat.completions.create(
-            model="gpt-5-mini",
+            model="gpt-4-turbo", # Note: gpt-5-mini doesn't exist yet! Switched to turbo.
             messages=chat_history,
             tools=openai_tools,
             tool_choice="auto"
@@ -33,6 +33,15 @@ async def run_chat_turn(user_message: str, chat_history: list, oauth_token: str)
         
         ai_msg = response.choices[0].message
         
+        # DEBUG LOGGING
+        print(f"\n--- TURN START: {user_message} ---")
+        if ai_msg.tool_calls:
+            print(f"AI DECISION: Tool Calls -> {len(ai_msg.tool_calls)}")
+            for tc in ai_msg.tool_calls:
+                print(f"  - {tc.function.name}: {tc.function.arguments}")
+        else:
+            print(f"AI DECISION: Direct Reply")
+
         # CASE A: AI just replies (No tool used)
         if not ai_msg.tool_calls:
             return {
@@ -42,9 +51,8 @@ async def run_chat_turn(user_message: str, chat_history: list, oauth_token: str)
             }
 
         # CASE B: AI wants to use a tool
-        # We'll execute it and run the loop again
         trace_logs = []
-        chat_history.append(ai_msg) # Add the "intent" to history
+        chat_history.append(ai_msg) 
 
         for tool_call in ai_msg.tool_calls:
             func_name = tool_call.function.name
@@ -52,10 +60,37 @@ async def run_chat_turn(user_message: str, chat_history: list, oauth_token: str)
             
             trace_logs.append(f"> Tool Call: {func_name}({args})")
             
-            # EXECUTE THE TOOL via MCP
+            # EXECUTE THE TOOL
             result_list = await call_tool(func_name, args)
             result_text = result_list[0].text
+            print(f"TOOL RESULT ({func_name}): {result_text[:100]}...") # Truncate for log
             
+            # --- 🛑 SAFETY CHECK: Did the tool return a Proposal? ---
+            # If the tool returns the special "proposed" JSON, we STOP here.
+            # We do NOT send this back to OpenAI. We send it to the User.
+            try:
+                # Attempt to parse result as JSON
+                tool_data = json.loads(result_text)
+                
+                if isinstance(tool_data, dict) and tool_data.get("status") == "proposed":
+                    trace_logs.append(f"> Action Proposed: {tool_data['description']}")
+                    
+                    return {
+                        "role": "assistant",
+                        "content": f"I've drafted a plan to {tool_data['description']}. Please review and approve it.",
+                        "trace": trace_logs,
+                        # This tells the Frontend to render the Approve/Deny buttons
+                        "action_required": {
+                            "type": "approval",
+                            "approval_id": tool_data["approval_id"],
+                            "label": tool_data["description"],
+                            "params": tool_data.get("params", {})
+                        }
+                    }
+            except json.JSONDecodeError:
+                pass # Not a JSON response, just continue normal flow
+            # -------------------------------------------------------
+
             trace_logs.append(f"> Result: {result_text}")
 
             # Feed result back to AI
@@ -70,6 +105,8 @@ async def run_chat_turn(user_message: str, chat_history: list, oauth_token: str)
             model="gpt-4-turbo",
             messages=chat_history
         )
+        
+        print(f"FINAL RESPONSE: {final_response.choices[0].message.content[:100]}...")
         
         return {
             "role": "assistant",

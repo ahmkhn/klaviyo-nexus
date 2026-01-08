@@ -2,9 +2,16 @@ import httpx
 import os
 import contextvars
 from mcp.types import Tool, TextContent
+import uuid
+import json
 
 # 1. Context Var (Still needed, but we will manage it carefully in the router)
 current_user_token = contextvars.ContextVar("current_user_token", default=None)
+
+# actions waiting approval
+PENDING_ACTIONS = {}
+
+
 
 # 2. Tool Definitions (Hardened Schemas)
 TOOLS = [
@@ -48,16 +55,41 @@ TOOLS = [
             "additionalProperties": False
         }
     ),
-    # WRITE TOOL: Create List
+    # 1. THE PROPOSER (Read-Only)
+    # The AI calls this when it WANTS to do something.
     Tool(
-        name="create_list",
-        description="Create a new subscriber list in Klaviyo. Returns the new List ID.",
+        name="propose_action",
+        description="Propose a modification (like creating a list) that requires user approval. You MUST provide the specific parameters (like 'list_name') for the chosen action.",
         inputSchema={
             "type": "object",
             "properties": {
-                "list_name": {"type": "string", "description": "The name of the new list (e.g., 'VIP Customers')"}
+                "action_type": {
+                    "type": "string",
+                    "enum": ["create_list"], 
+                    "description": "The type of action to perform."
+                },
+                "list_name": {
+                    "type": "string", 
+                    "description": "REQUIRED if action_type is 'create_list'. The name of the new list."
+                }
             },
-            "required": ["list_name"],
+            "required": ["action_type"],
+            "additionalProperties": False
+        }
+    ),
+
+    # 2. THE EXECUTOR (Write)
+    # This is only called after the user clicks "Approve" in the UI.
+    Tool(
+        name="execute_action",
+        description="Execute a previously proposed action using its Approval ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "approval_id": {"type": "string"},
+                "list_name": {"type": "string", "description": "Fallback: If approval ID fails, provide list name here."}
+            },
+            "required": ["approval_id"],
             "additionalProperties": False
         }
     )
@@ -73,7 +105,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         "Authorization": f"Bearer {token}",
         "revision": "2024-10-15",
         "accept": "application/json",
-        "content-type": "application/json"
     }
 
     # API Hardening: 10s timeout to prevent hanging
@@ -94,7 +125,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         # --- TOOL: Get Campaigns ---
         elif name == "get_campaigns":
             params = {
-                "filter": "equals(messages.channel,'email')"
+                "filter": "equals(messages.channel,'email')",
+                "sort": "-created_at"
             }
             resp = await client.get("https://a.klaviyo.com/api/campaigns/", params=params, headers=headers)
             if resp.status_code != 200:
@@ -147,23 +179,75 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 )
             return [TextContent(type="text", text="\n".join(summary))]
 
-        # --- TOOL: Create List ---
-        elif name == "create_list":
-            url = "https://a.klaviyo.com/api/lists/"
-            payload = {
-                "data": {
-                    "type": "list",
-                    "attributes": {
-                        "name": arguments["list_name"]
+        elif name == "propose_action":
+            act_type = arguments.get("action_type")
+            if not act_type:
+                return [TextContent(type="text", text="Error: Missing 'action_type' in propose_action call.")]
+
+            # Construct params from flattened arguments
+            params = {}
+            if act_type == "create_list":
+                # Check top-level list_name
+                l_name = arguments.get("list_name")
+                if not l_name:
+                    return [TextContent(type="text", text="Error: 'list_name' is required for create_list action.")]
+                params["list_name"] = l_name
+            
+            # Generate a unique ID for this plan
+            approval_id = str(uuid.uuid4())[:8]
+            
+            # Store it in memory
+            PENDING_ACTIONS[approval_id] = {
+                "type": act_type,
+                "params": params,
+                "description": f"Create {act_type.replace('_', ' ')}: {params.get('list_name', 'Unknown')}"
+            }
+            
+            # Return a special JSON signal. 
+            # The Agent will read this and tell the user: "I have a plan, please approve."
+            return [TextContent(type="text", text=json.dumps({
+                "status": "proposed",
+                "approval_id": approval_id,
+                "description": PENDING_ACTIONS[approval_id]["description"],
+                "params": params
+            }))]
+
+        # Step 2: Execute (The actual API call)
+        elif name == "execute_action":
+            a_id = arguments.get("approval_id")
+            action = PENDING_ACTIONS.get(a_id)
+            
+            # STATELESS FALLBACK:
+            # If the server restarted, memory is wiped. 
+            # If the user provides the list_name in the arguments, use it directly.
+            list_name_fallback = arguments.get("list_name")
+            
+            if not action:
+                if list_name_fallback:
+                    action = {"type": "create_list", "params": {"list_name": list_name_fallback}}
+                else:
+                    return [TextContent(type="text", text="Error: Invalid or expired Approval ID (and no fallback data provided).")]
+            
+            # --- EXECUTE: Create List ---
+            if action["type"] == "create_list":
+                url = "https://a.klaviyo.com/api/lists/"
+                payload = {
+                    "data": {
+                        "type": "list",
+                        "attributes": {
+                            "name": action["params"]["list_name"]
+                        }
                     }
                 }
-            }
-            resp = await client.post(url, json=payload, headers=headers)
-            
-            if resp.status_code == 201:
-                new_id = resp.json()["data"]["id"]
-                return [TextContent(type="text", text=f"SUCCESS: Created list '{arguments['list_name']}' with ID: {new_id}")]
-            else:
-                return [TextContent(type="text", text=f"Failed to create list: {resp.text}")]
+                resp = await client.post(url, json=payload, headers=headers)
+                
+                # Cleanup: Remove the action so it can't be executed twice
+                del PENDING_ACTIONS[a_id]
+                
+                if resp.status_code == 201:
+                    new_id = resp.json()["data"]["id"]
+                    return [TextContent(type="text", text=f"SUCCESS: Created list '{action['params']['list_name']}' (ID: {new_id})")]
+                else:
+                    return [TextContent(type="text", text=f"Failed to create list: {resp.text}")]
 
     raise ValueError(f"Tool {name} not found")

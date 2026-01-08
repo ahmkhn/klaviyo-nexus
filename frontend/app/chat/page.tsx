@@ -19,7 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-// Types for our chat messages
+  // Types for our chat messages
 type Message = {
   id: string;
   role: 'user' | 'assistant';
@@ -30,6 +30,7 @@ type Message = {
   actionRequired?: {
     type: 'approval';
     label: string;
+    params?: any;
     onApprove: () => void;
     onDeny: () => void;
   };
@@ -147,7 +148,19 @@ export default function ChatPage() {
             role: 'assistant',
             content: data.content, // response from ai model
             trace: data.trace || [], // tool's execution logs
-            timestamp: new Date()
+            timestamp: new Date(),
+            actionRequired: data.action_required ? {
+                type: 'approval',
+                label: data.action_required.label,
+                params: data.action_required.params,
+                // When Approved: Call the EXECUTE tool
+                onApprove: () => handleExecute(data.action_required.approval_id, data.action_required.params), 
+                // When Denied: Just show a message
+                onDeny: () => setMessages(prev => [...prev, {
+                   id: Date.now().toString(), role: 'assistant', content: "Action cancelled.", timestamp: new Date()
+                }])
+              } : undefined
+            
         }
         setMessages(prev => [...prev, aiMsg])
     } catch(error) {
@@ -163,7 +176,61 @@ export default function ChatPage() {
         setIsThinking(false);
     }
   };
+  const handleExecute = async (approvalId : string, params?: any) => {
+    setIsThinking(true);
+    try {
+        // We manually inject the execute call or just ask the AI to do it
+        // Ideally, we just hit the chat endpoint again with a specific system prompt or tool output.
+        // HACKATHON SHORTCUT: Just tell the AI what to do.
+        // Better approach: Since we have the ID, we can just trigger the tool via chat
+        // But for simplicity, let's just simulate the user saying "Execute approval ID X"
+        // and trust the agent loop to handle it.
+        // OR better: Create a new fetch to a dedicated execution endpoint.
+        // LET'S STICK TO CHAT for simplicity:
+        
+        let msg = `User approved action ${approvalId}. Please call execute_action now.`;
+        if (params && params.list_name) {
+             msg += ` Fallback Params: list_name="${params.list_name}"`;
+        }
 
+        const res = await fetch('http://localhost:8000/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ 
+                message: msg,
+                history: messages.map(m => ({ role: m.role, content: m.content })) 
+            }),
+        });
+        
+        if (!res.ok) {
+            throw new Error(`Server error: ${res.status}`);
+        }
+
+        const data = await res.json();
+        // ... Handle response same as handleSend ...
+        const aiMsg: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: data.content,
+            trace: data.trace,
+            timestamp: new Date()
+        };
+        setMessages(prev => [...prev, aiMsg]);
+
+    } catch (e) {
+        console.error(e);
+        const errorMsg: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: "⚠️ Execution Failed: The server encountered an error while processing the approval.",
+            timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMsg]);
+    } finally {
+        setIsThinking(false);
+    }
+  };
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 md:p-8 font-sans">
       
