@@ -41,7 +41,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-
+  const [resolvedActions, setResolvedActions] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -141,6 +141,8 @@ export default function ChatPage() {
         
         const data = await res.json();
 
+        const msgId = (Date.now() + 1).toString();
+
         // if we reach this part, we have the data, so let's
         // display the ai's message.
         const aiMsg: Message = {
@@ -154,11 +156,20 @@ export default function ChatPage() {
                 label: data.action_required.label,
                 params: data.action_required.params,
                 // When Approved: Call the EXECUTE tool
-                onApprove: () => handleExecute(data.action_required.approval_id, data.action_required.params), 
+                onApprove: () => {
+                    setResolvedActions(prev => new Set(prev).add(msgId));
+                    handleExecute(data.action_required.approval_id, data.action_required.params);
+                }, 
                 // When Denied: Just show a message
-                onDeny: () => setMessages(prev => [...prev, {
-                   id: Date.now().toString(), role: 'assistant', content: "Action cancelled.", timestamp: new Date()
-                }])
+                onDeny: () => {
+                    setResolvedActions(prev => new Set(prev).add(msgId));
+                    setMessages(prev => [...prev, {
+                        id: Date.now().toString(), 
+                        role: 'assistant', 
+                        content: "Action cancelled.", 
+                        timestamp: new Date()
+                    }]);
+                }
               } : undefined
             
         }
@@ -328,24 +339,31 @@ export default function ChatPage() {
                           <p className="font-semibold text-sm text-amber-900">Approval Required</p>
                           <p className="text-xs text-amber-700/80">{msg.actionRequired.label}</p>
                         </div>
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            className="text-slate-600 hover:text-red-600 hover:bg-red-50 border-slate-200"
-                            onClick={msg.actionRequired.onDeny}
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            className="bg-black hover:bg-slate-800 text-white"
-                            onClick={msg.actionRequired.onApprove}
-                          >
-                            <CheckCircle2 className="w-3 h-3 mr-2" />
-                            Approve
-                          </Button>
-                        </div>
+                        {!resolvedActions.has(msg.id) ? (
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="text-slate-600 hover:text-red-600 hover:bg-red-50 border-slate-200"
+                              onClick={msg.actionRequired.onDeny}
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              className="bg-black hover:bg-slate-800 text-white"
+                              onClick={msg.actionRequired.onApprove}
+                            >
+                              <CheckCircle2 className="w-3 h-3 mr-2" />
+                              Approve
+                            </Button>
+                          </div>
+                        ) : (
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-none">
+                                Completed
+                            </Badge>
+                        )}
+                        
                       </div>
                     </Card>
                   )}
