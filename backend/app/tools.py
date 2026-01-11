@@ -4,14 +4,23 @@ import contextvars
 from mcp.types import Tool, TextContent
 import uuid
 import json
+import random
+
+def get_klaviyo_headers(token: str, *, include_content_type: bool = False):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "revision": "2024-10-15",
+        "accept": "application/vnd.api+json",
+    }
+    if include_content_type:
+        headers["content-type"] = "application/vnd.api+json"
+    return headers
 
 # 1. Context Var (Still needed, but we will manage it carefully in the router)
 current_user_token = contextvars.ContextVar("current_user_token", default=None)
 
 # actions waiting approval
 PENDING_ACTIONS = {}
-
-
 
 # 2. Tool Definitions (Hardened Schemas)
 TOOLS = [
@@ -65,15 +74,15 @@ TOOLS = [
             "properties": {
                 "action_type": {
                     "type": "string",
-                    "enum": ["create_list"], 
+                    "enum": ["create_list", "create_vip_audience"], 
                     "description": "The type of action to perform."
                 },
-                "list_name": {
-                    "type": "string", 
-                    "description": "REQUIRED if action_type is 'create_list'. The name of the new list."
+                "parameters": {
+                    "type": "object",
+                    "description": "A dictionary of arguments specific to the action_type. E.g. {'list_name': 'My List'} or For VIP Audience: {'min_spend': 500, 'seed_count': 3}"
                 }
             },
-            "required": ["action_type"],
+            "required": ["action_type", "parameters"],
             "additionalProperties": False
         }
     ),
@@ -101,18 +110,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if not token:
         return [TextContent(type="text", text="Error: User is not authenticated via OAuth.")]
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "revision": "2024-10-15",
-        "accept": "application/json",
-    }
+    headers_get = get_klaviyo_headers(token, include_content_type=False)
+    headers_post = get_klaviyo_headers(token, include_content_type=True)
 
     # API Hardening: 10s timeout to prevent hanging
     async with httpx.AsyncClient(timeout=10.0) as client:
         
         # --- TOOL: Get Account Details ---
         if name == "get_account_details":
-            resp = await client.get("https://a.klaviyo.com/api/accounts/", headers=headers)
+            resp = await client.get("https://a.klaviyo.com/api/accounts/", headers=headers_get)
             if resp.status_code == 401:
                 return [TextContent(type="text", text="Error: OAuth Token Expired. Please re-login.")]
             if resp.status_code != 200:
@@ -128,7 +134,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 "filter": "equals(messages.channel,'email')",
                 "sort": "-created_at"
             }
-            resp = await client.get("https://a.klaviyo.com/api/campaigns/", params=params, headers=headers)
+            resp = await client.get("https://a.klaviyo.com/api/campaigns/", params=params, headers=headers_get)
             if resp.status_code != 200:
                 return [TextContent(type="text", text=f"API Error {resp.status_code}: {resp.text}")]
             
@@ -137,15 +143,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 return [TextContent(type="text", text="No email campaigns found.")]
             
             summary = [f"ID: {d['id']} | Name: {d['attributes']['name']} | Status: {d['attributes']['status']}" for d in data]
-            req = resp.request
-            print("METHOD:", req.method)
-            print("URL:", req.url)
-            print("BODY:", req.content)  # should be b"" for GET
             return [TextContent(type="text", text="\n".join(summary))]
 
         # --- TOOL: Get Lists ---
         elif name == "get_lists":
-            resp = await client.get("https://a.klaviyo.com/api/lists/", headers=headers)
+            resp = await client.get("https://a.klaviyo.com/api/lists/", headers=headers_get)
             if resp.status_code != 200:
                 return [TextContent(type="text", text=f"API Error {resp.status_code}: {resp.text}")]
             
@@ -163,7 +165,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         # --- TOOL: Get Segments ---
         elif name == "get_segments":
-            resp = await client.get("https://a.klaviyo.com/api/segments/", headers=headers)
+            resp = await client.get("https://a.klaviyo.com/api/segments/", headers=headers_get)
             if resp.status_code != 200:
                 return [TextContent(type="text", text=f"API Error {resp.status_code}: {resp.text}")]
             
@@ -181,17 +183,30 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         elif name == "propose_action":
             act_type = arguments.get("action_type")
+            parameters = arguments.get("parameters") or {}
+            
             if not act_type:
                 return [TextContent(type="text", text="Error: Missing 'action_type' in propose_action call.")]
 
-            # Construct params from flattened arguments
             params = {}
+            description = ""
+
             if act_type == "create_list":
-                # Check top-level list_name
-                l_name = arguments.get("list_name")
+                l_name = parameters.get("list_name")
                 if not l_name:
                     return [TextContent(type="text", text="Error: 'list_name' is required for create_list action.")]
                 params["list_name"] = l_name
+                description = f"Create list: {l_name}"
+            
+            elif act_type == "create_vip_audience":
+                params["min_spend"] = int(parameters.get("min_spend", 300))
+                params["seed_count"] = int(parameters.get("seed_count", 3))
+                description = (
+                    f"Create VIP audience (demo list) for spend >= ${params['min_spend']} "
+                    f"(seed {params['seed_count']} VIP profiles)"
+                )
+            else:
+                return [TextContent(type="text", text=f"Error: Unsupported action_type '{act_type}'.")]
             
             # Generate a unique ID for this plan
             approval_id = str(uuid.uuid4())[:8]
@@ -200,11 +215,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             PENDING_ACTIONS[approval_id] = {
                 "type": act_type,
                 "params": params,
-                "description": f"Create {act_type.replace('_', ' ')}: {params.get('list_name', 'Unknown')}"
+                "description": description,
             }
             
-            # Return a special JSON signal. 
-            # The Agent will read this and tell the user: "I have a plan, please approve."
             return [TextContent(type="text", text=json.dumps({
                 "status": "proposed",
                 "approval_id": approval_id,
@@ -218,8 +231,6 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             action = PENDING_ACTIONS.get(a_id)
             
             # STATELESS FALLBACK:
-            # If the server restarted, memory is wiped. 
-            # If the user provides the list_name in the arguments, use it directly.
             list_name_fallback = arguments.get("list_name")
             
             if not action:
@@ -239,15 +250,87 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                         }
                     }
                 }
-                resp = await client.post(url, json=payload, headers=headers)
+                resp = await client.post(url, json=payload, headers=headers_post)
                 
                 # Cleanup: Remove the action so it can't be executed twice
-                del PENDING_ACTIONS[a_id]
+                if a_id in PENDING_ACTIONS:
+                    del PENDING_ACTIONS[a_id]
                 
                 if resp.status_code == 201:
                     new_id = resp.json()["data"]["id"]
                     return [TextContent(type="text", text=f"SUCCESS: Created list '{action['params']['list_name']}' (ID: {new_id})")]
                 else:
                     return [TextContent(type="text", text=f"Failed to create list: {resp.text}")]
+
+            # --- EXECUTE: Create VIP Audience (demo list + seed VIP profiles + add to list) ---
+            if action["type"] == "create_vip_audience":
+                min_spend = action["params"].get("min_spend", 300)
+                seed_count = action["params"].get("seed_count", 3)
+
+                list_name = f"VIP Audience (demo): ${min_spend}+"
+                url_list = "https://a.klaviyo.com/api/lists/"
+                payload_list = {"data": {"type": "list", "attributes": {"name": list_name}}}
+
+                resp_list = await client.post(
+                    url_list, json=payload_list, headers=headers_post
+                )
+                if resp_list.status_code != 201:
+                    return [
+                        TextContent(
+                            type="text",
+                            text=f"Failed to create VIP list container: {resp_list.text}",
+                        )
+                    ]
+
+                list_id = resp_list.json()["data"]["id"]
+                suffix = str(random.randint(1000, 9999))
+
+                created_emails = []
+                for i in range(seed_count):
+                    email = f"vip.user{i+1}.{suffix}@example.com"
+                    spend = min_spend + (50 * (i + 1))
+
+                    payload_p = {
+                        "data": {
+                            "type": "profile",
+                            "attributes": {
+                                "email": email,
+                                "properties": {
+                                    "nexus_demo_spend_90d": spend,
+                                    "nexus_demo_is_vip": True,
+                                },
+                            },
+                        }
+                    }
+                    resp_p = await client.post(
+                        "https://a.klaviyo.com/api/profiles/",
+                        json=payload_p,
+                        headers=headers_post,
+                    )
+                    if resp_p.status_code == 201:
+                        pid = resp_p.json()["data"]["id"]
+                        url_rel = (
+                            f"https://a.klaviyo.com/api/lists/{list_id}/relationships/profiles/"
+                        )
+                        payload_rel = {"data": [{"type": "profile", "id": pid}]}
+                        resp_rel = await client.post(
+                            url_rel, json=payload_rel, headers=headers_post
+                        )
+                        if resp_rel.status_code in (200, 201, 204):
+                            created_emails.append(f"{email} (${spend})")
+
+                if a_id in PENDING_ACTIONS:
+                    del PENDING_ACTIONS[a_id]
+
+                return [
+                    TextContent(
+                        type="text",
+                        text=(
+                            f"SUCCESS: Created VIP List '{list_name}' (ID: {list_id}).\n"
+                            f"Seeded+added {len(created_emails)} VIP profiles:\n"
+                            + "\n".join(created_emails)
+                        ),
+                    )
+                ]
 
     raise ValueError(f"Tool {name} not found")
