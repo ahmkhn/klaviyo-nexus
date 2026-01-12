@@ -49,7 +49,7 @@ def login(db: Session = Depends(get_db)):
     db.add(OAuthState(state=state, code_verifier=code_verifier))
     db.commit()
 
-    scopes = "accounts:read campaigns:read profiles:read lists:read segments:read lists:write"
+    scopes = "accounts:read campaigns:read profiles:read lists:read segments:read lists:write profiles:write campaigns:write templates:read templates:write"
     params = {
         "response_type": "code",
         "client_id": KLAVIYO_CLIENT_ID,
