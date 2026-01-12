@@ -277,121 +277,123 @@ export default function ChatPage() {
         </header>
 
         {/* Chat Area */}
-        <ScrollArea className="flex-1 p-6 bg-[#FAFAFA]">
-          <div className="space-y-8 max-w-3xl mx-auto pb-4">
-            
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+        <div className="flex-1 min-h-0 bg-[#FAFAFA]" >
+            <ScrollArea className="h-full p-6">
+            <div className="space-y-8 max-w-3xl mx-auto pb-4">
                 
-                {/* Avatar */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm
-                  ${msg.role === 'assistant' ? 'bg-black text-white' : 'bg-white text-slate-700 border'}`}>
-                  {msg.role === 'assistant' ? <RocketIcon className="w-4 h-4" /> : <span className="text-xs font-bold">YO</span>}
-                </div>
-
-                {/* Message Content */}
-                <div className={`space-y-2 max-w-[85%] ${msg.role === 'user' ? 'items-end flex flex-col' : ''}`}>
-                  
-                  {/* Name Label */}
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <span className="font-medium text-slate-900">{msg.role === 'assistant' ? 'Nexus AI' : 'You'}</span>
-                    <span>
-                    {mounted
-                        ? msg.timestamp.toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                        })
-                        : null}
-                    </span>
-                  </div>
-
-                  {/* Execution Trace (Only for Assistant) */}
-                  {msg.trace && (
-                    <div className="w-full bg-slate-900 rounded-lg p-4 font-mono text-xs border border-slate-800 shadow-lg my-2">
-                      <div className="flex items-center gap-2 text-slate-500 mb-3 border-b border-slate-800 pb-2">
-                        <Terminal className="w-3 h-3" />
-                        <span>Execution Trace</span>
-                      </div>
-                      <div className="space-y-1.5">
-                        {msg.trace.map((line, i) => (
-                          <p key={i} className="text-green-400/90 break-all pl-2 border-l-2 border-slate-700">
-                            {line}
-                          </p>
-                        ))}
-                      </div>
+                {messages.map((msg) => (
+                <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                    
+                    {/* Avatar */}
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm
+                    ${msg.role === 'assistant' ? 'bg-black text-white' : 'bg-white text-slate-700 border'}`}>
+                    {msg.role === 'assistant' ? <RocketIcon className="w-4 h-4" /> : <span className="text-xs font-bold">YO</span>}
                     </div>
-                  )}
 
-                  {/* Main Bubble */}
-                  <div className={`p-4 rounded-xl shadow-sm text-sm leading-relaxed
-                    ${msg.role === 'user' 
-                      ? 'bg-white border text-slate-700 rounded-tr-none' 
-                      : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
-                    }`}>
-                    {msg.content}
-                  </div>
+                    {/* Message Content */}
+                    <div className={`space-y-2 max-w-[85%] ${msg.role === 'user' ? 'items-end flex flex-col' : ''}`}>
+                    
+                    {/* Name Label */}
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="font-medium text-slate-900">{msg.role === 'assistant' ? 'Nexus AI' : 'You'}</span>
+                        <span>
+                        {mounted
+                            ? msg.timestamp.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                            })
+                            : null}
+                        </span>
+                    </div>
 
-                  {/* Action Card (If Approval Needed) */}
-                  {msg.actionRequired && (
-                    <Card className="w-full mt-2 border-l-4 border-l-amber-500 bg-amber-50/50">
-                      <div className="p-4 flex items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-sm text-amber-900">Approval Required</p>
-                          <p className="text-xs text-amber-700/80">{msg.actionRequired.label}</p>
+                    {/* Execution Trace (Only for Assistant) */}
+                    {msg.trace && (
+                        <div className="w-full bg-slate-900 rounded-lg p-4 font-mono text-xs border border-slate-800 shadow-lg my-2">
+                        <div className="flex items-center gap-2 text-slate-500 mb-3 border-b border-slate-800 pb-2">
+                            <Terminal className="w-3 h-3" />
+                            <span>Execution Trace</span>
                         </div>
-                        {!resolvedActions.has(msg.id) ? (
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="text-slate-600 hover:text-red-600 hover:bg-red-50 border-slate-200"
-                              onClick={msg.actionRequired.onDeny}
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              className="bg-black hover:bg-slate-800 text-white"
-                              onClick={msg.actionRequired.onApprove}
-                            >
-                              <CheckCircle2 className="w-3 h-3 mr-2" />
-                              Approve
-                            </Button>
-                          </div>
-                        ) : (
-                            <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-none">
-                                Completed
-                            </Badge>
-                        )}
-                        
-                      </div>
-                    </Card>
-                  )}
-                </div>
-              </div>
-            ))}
+                        <div className="space-y-1.5">
+                            {msg.trace.map((line, i) => (
+                            <p key={i} className="text-green-400/90 break-all pl-2 border-l-2 border-slate-700">
+                                {line}
+                            </p>
+                            ))}
+                        </div>
+                        </div>
+                    )}
 
-            {/* Thinking Indicator */}
-            {isThinking && (
-              <div className="flex gap-4 animate-pulse">
-                <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0">
-                  <RocketIcon className="w-4 h-4 text-white" />
+                    {/* Main Bubble */}
+                    <div className={`p-4 rounded-xl shadow-sm text-sm leading-relaxed
+                        ${msg.role === 'user' 
+                        ? 'bg-white border text-slate-700 rounded-tr-none' 
+                        : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
+                        }`}>
+                        {msg.content}
+                    </div>
+
+                    {/* Action Card (If Approval Needed) */}
+                    {msg.actionRequired && (
+                        <Card className="w-full mt-2 border-l-4 border-l-amber-500 bg-amber-50/50">
+                        <div className="p-4 flex items-center justify-between gap-4">
+                            <div className="space-y-1">
+                            <p className="font-semibold text-sm text-amber-900">Approval Required</p>
+                            <p className="text-xs text-amber-700/80">{msg.actionRequired.label}</p>
+                            </div>
+                            {!resolvedActions.has(msg.id) ? (
+                            <div className="flex gap-2">
+                                <Button 
+                                size="sm" 
+                                variant="outline"
+                                className="text-slate-600 hover:text-red-600 hover:bg-red-50 border-slate-200"
+                                onClick={msg.actionRequired.onDeny}
+                                >
+                                <XCircle className="w-4 h-4" />
+                                </Button>
+                                <Button 
+                                size="sm" 
+                                className="bg-black hover:bg-slate-800 text-white"
+                                onClick={msg.actionRequired.onApprove}
+                                >
+                                <CheckCircle2 className="w-3 h-3 mr-2" />
+                                Approve
+                                </Button>
+                            </div>
+                            ) : (
+                                <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-none">
+                                    Completed
+                                </Badge>
+                            )}
+                            
+                        </div>
+                        </Card>
+                    )}
+                    </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <span className="font-medium text-slate-900">Nexus AI</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-slate-100 px-4 py-3 rounded-xl rounded-tl-none">
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-                    <span className="text-sm text-slate-500 font-medium">Processing logic...</span>
-                  </div>
+                ))}
+
+                {/* Thinking Indicator */}
+                {isThinking && (
+                <div className="flex gap-4 animate-pulse">
+                    <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0">
+                    <RocketIcon className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="font-medium text-slate-900">Nexus AI</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-slate-100 px-4 py-3 rounded-xl rounded-tl-none">
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                        <span className="text-sm text-slate-500 font-medium">Processing logic...</span>
+                    </div>
+                    </div>
                 </div>
-              </div>
-            )}
-            
-            <div ref={scrollRef} />
-          </div>
-        </ScrollArea>
+                )}
+                
+                <div ref={scrollRef} />
+            </div>
+            </ScrollArea>
+        </div>
 
         {/* Input Area */}
         <div className="p-4 bg-white border-t border-slate-100 shrink-0">
