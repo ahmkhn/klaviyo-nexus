@@ -576,6 +576,50 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 if isinstance(rel, list) and rel:
                     message_id = rel[0].get("id")
 
+                # Best-effort: create + assign a simple HTML template so the email
+                # body isn't the Klaviyo placeholder content.
+                template_id = None
+                template_note = "Template not created."
+
+                if message_id:
+                    template_html = (
+                        "<!doctype html><html><body style='font-family: Arial, sans-serif;'>"
+                        "<p>Hi {{ first_name }},</p>"
+                        "<p><strong>VIP early access:</strong> 20% off.</p>"
+                        "<p><strong>Use code:</strong> VIP20</p>"
+                        "<p><a href='https://example.com/vip'>Shop early access</a></p>"
+                        "<p>{% unsubscribe %}</p>"
+                        "</body></html>"
+                    )
+                    template_name = f"{campaign_name} (Nexus Template)"
+
+                    resp_t = await client.post(
+                        "https://a.klaviyo.com/api/templates/",
+                        json={
+                            "data": {
+                                "type": "template",
+                                "attributes": {
+                                    "name": template_name,
+                                    "editor_type": "CODE",
+                                    "html": template_html,
+                                },
+                            }
+                        },
+                        headers=headers_post,
+                    )
+                    if resp_t.status_code in (200, 201):
+                        template_id = resp_t.json()["data"]["id"]
+                        template_note = (
+                            f"Created template '{template_name}' (template ID: {template_id}).\n"
+                            "To apply it: Klaviyo → Campaigns → open this draft → Content "
+                            "→ Change template → select the template by name."
+                        )
+                    else:
+                        template_note = (
+                            "Template creation failed: "
+                            f"{resp_t.status_code} {resp_t.text}"
+                        )
+
                 return [
                     TextContent(
                         type="text",
@@ -583,6 +627,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                             f"SUCCESS: Created email campaign draft '{campaign_name}' "
                             f"(campaign ID: {campaign_id}) targeting list {list_id}.\n"
                             + (f"Campaign message ID: {message_id}\n" if message_id else "")
+                            + f"{template_note}\n"
                             + "Next: assign a template in Klaviyo before scheduling/sending."
                         ),
                     )
