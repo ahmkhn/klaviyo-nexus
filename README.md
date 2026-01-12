@@ -1,6 +1,8 @@
 # Klaviyo Nexus
 
-**Marketing Ops, Autopilot.**
+**Marketing Ops, Autopilot.**  
+Demo (click!)
+[![Demo Link](https://img.youtube.com/vi/KdCY2jwBZ0Q/0.jpg)](https://www.youtube.com/watch?v=KdCY2jwBZ0Q)
 
 ## Problem Statement
 Marketing operations often require bridging the gap between creative intuition and technical execution. Tasks like building complex segments, drafting campaigns, and analyzing performance involve repetitive navigation of complex UIs and logic builders. Marketers need a way to turn natural language requests into structured, safe, and effective Klaviyo actions without getting bogged down in the mechanics of the platform.
