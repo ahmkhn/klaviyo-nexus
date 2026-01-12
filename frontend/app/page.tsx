@@ -82,9 +82,11 @@ export default function Home() {
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
                 </Link>
-                <Button variant="outline" size="lg" className="h-12 px-8 bg-white border-slate-300 hover:bg-slate-50">
-                  View Demo Data
-                </Button>
+                <a href="https://www.youtube.com/watch?v=KdCY2jwBZ0Q">
+                  <Button variant="outline" size="lg" className="h-12 px-8 bg-white border-slate-300 hover:bg-slate-50">
+                    View Demo
+                  </Button>
+                </a>
               </div>
 
               <div className="flex items-center gap-4 text-sm text-slate-500 pt-4">
