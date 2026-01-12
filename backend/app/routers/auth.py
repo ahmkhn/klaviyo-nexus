@@ -134,3 +134,27 @@ async def callback(request: Request, db: Session = Depends(get_db)):
         secure=False # make this an env var for localhost vs production environments, needs to be True on prod
     )
     return r
+
+
+@router.get("/status")
+def auth_status(request: Request, db: Session = Depends(get_db)):
+    """
+    Checks if the user has a valid session_id cookie and matching DB record.
+    Returns { authenticated: true/false }
+    """
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        return {"authenticated": False}
+
+    inst = (
+        db.query(OAuthInstallation)
+        .filter(OAuthInstallation.session_id == session_id)
+        .first()
+    )
+
+    if inst and inst.access_token:
+        # Optionally check token expiration here, 
+        # but mere presence of record + token is enough for 'logged in' check
+        return {"authenticated": True}
+    
+    return {"authenticated": False}

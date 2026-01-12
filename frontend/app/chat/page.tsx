@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react';
+import { useRouter } from "next/navigation";
 import { 
   RocketIcon, 
   Send, 
@@ -38,11 +39,40 @@ type Message = {
 };
 
 export default function ChatPage() {
+  const router = useRouter();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [resolvedActions, setResolvedActions] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/auth/status", {
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          router.replace("/");
+          return;
+        }
+
+        const data = await res.json();
+        if (!data.authenticated) {
+            router.replace("/");
+        } else {
+            setIsCheckingAuth(false);
+        }
+      } catch (e) {
+        console.error("Auth check failed", e);
+        router.replace("/");
+      }
+    };
+
+    checkAuth();
+  }, [router]);
 
     useEffect(() => {
         setMounted(true);
@@ -242,6 +272,18 @@ export default function ChatPage() {
         setIsThinking(false);
     }
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
+         <div className="flex flex-col items-center gap-4">
+             <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+             <p className="text-slate-500 text-sm font-medium">Checking authentication...</p>
+         </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 md:p-8 font-sans">
       
