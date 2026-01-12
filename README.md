@@ -1,127 +1,183 @@
 # Klaviyo Nexus
 
 **Marketing Ops, Autopilot.**  
-Demo (click!)
+Turn natural language into **safe, structured Klaviyo actions** with human approval + execution trace.
+
+Demo (5 min):  
 [![Demo Link](https://img.youtube.com/vi/KdCY2jwBZ0Q/0.jpg)](https://www.youtube.com/watch?v=KdCY2jwBZ0Q)
 
-## Problem Statement
-Marketing operations often require bridging the gap between creative intuition and technical execution. Tasks like building complex segments, drafting campaigns, and analyzing performance involve repetitive navigation of complex UIs and logic builders. Marketers need a way to turn natural language requests into structured, safe, and effective Klaviyo actions without getting bogged down in the mechanics of the platform.
+---
 
-## Solution Overview
-**Klaviyo Nexus** is an AI-powered agent designed to be the ultimate "copilot" for your Klaviyo account. It leverages the Model Context Protocol (MCP) design pattern to interpret natural language and orchestrate complex workflows.
+## Why this exists (Problem)
 
-**Key Features:**
-*   **Natural Language Interface:** Chat with your data. Ask Nexus to "Create a VIP audience" or "Draft a re-engagement campaign," and it understands your intent.
-*   **Human-in-the-Loop Safety:** AI never acts alone. Nexus "proposes" actions (like creating a list or sending an email) which generate an interactive approval card in the UI. The action executes only when you click "Approve".
-*   **Smart Audiences:** Instantly generate lists and segments with seeded data for testing (e.g., creating a demo VIP list with dummy high-spender profiles).
-*   **Campaign Drafting:** Automate the tedious parts of campaign creation, including subject lines, preview text, and template assignment.
+Klaviyo is powerful, but common marketing ops tasks—building audiences, drafting campaigns, and validating settings—often require many UI steps and deep platform knowledge. Beginners get stuck, and experienced teams lose time repeating the same workflows.
 
-## Architecture / Design Decisions
+**Goal:** make Klaviyo easier to operate by translating “marketing intent” into the correct, safe API operations—without hiding what’s happening.
 
-### Tech Stack
-*   **Infrastructure:** Docker & Docker Compose.
-    *   **Design Choice:** Fully containerized application for consistent development and deployment environments.
-*   **Frontend:** [Next.js 14](https://nextjs.org/) (React) with TypeScript.
-    *   Styling: Tailwind CSS and [shadcn/ui](https://ui.shadcn.com/) for a modern, accessible aesthetic.
-    *   **Design Choice:** The chat interface mimics a coding IDE/terminal ("Nexus Agent") to emphasize the "infrastructure as code" nature of the tool, while maintaining a user-friendly conversational flow.
-*   **Backend:** [FastAPI](https://fastapi.tiangolo.com/) (Python).
-    *   **Design Choice:** Chosen for its speed and native support for asynchronous operations, which is crucial for handling AI streaming and concurrent API calls.
-*   **AI Engine:** OpenAI (GPT-4 Turbo).
-    *   **Design Choice:** We use function calling (Tools) to structure the AI's output into predictable JSON payloads that the backend can validate and execute.
+---
 
-### Data Flow & Safety
-1.  **User Request:** User types a command in the frontend.
-2.  **Intent Analysis:** The backend sends the history + available tools to OpenAI.
-3.  **Proposal:** If the AI decides to modify data (write operation), it returns a `propose_action` tool call.
-4.  **Approval UI:** The frontend renders this proposal as an interactive "Approval Card."
-5.  **Execution:** Upon user approval, a second request is sent to the backend to actually call the Klaviyo API (`execute_action`).
+## What Nexus does (Solution)
 
-## Klaviyo API / SDK / MCP Usage
+**Klaviyo Nexus** is an AI-powered Marketing Operations Agent that converts natural language requests into structured Klaviyo actions using an MCP-style tool layer.
 
-This project interacts directly with the **Klaviyo API** using raw HTTP requests (via `httpx`) to demonstrate low-level control and understanding of the API endpoints.
+### Key features
+- **Natural language → structured actions**
+  - Example: “Create a VIP audience for customers who spent over $300 and draft an email campaign for them.”
+- **Human-in-the-loop safety**
+  - Nexus never performs write actions immediately. It first returns a proposal and waits for **Approve & Create**.
+- **Execution trace**
+  - Every tool call is shown to the user (inputs + outputs) for transparency and debugging.
+- **VIP audience recipe (demo-mode, works on fresh accounts)**
+  - Creates a VIP **list** and seeds demo profiles with properties like:
+    - `nexus_demo_spend_90d`
+    - `nexus_demo_is_vip`
+- **Campaign draft creation**
+  - Creates an **email campaign draft** targeting the VIP list (subject/sender fields included).
 
-**Key Endpoints Used:**
-*   **Lists & Segments:**
-    *   `GET /api/lists/` & `GET /api/segments/`: To retrieve context about existing audiences.
-    *   `POST /api/lists/`: To create new containers for audiences.
-*   **Profiles:**
-    *   `POST /api/profiles/`: Used to seed "VIP" lists with demo profiles containing custom properties (e.g., `nexus_demo_spend_90d`).
-    *   `POST /api/lists/{id}/relationships/profiles/`: To add these profiles to specific lists.
-*   **Campaigns:**
-    *   `GET /api/campaigns/`: To fetch recent campaign status.
-    *   `POST /api/campaigns/`: To draft new email campaigns with specific audiences and send strategies.
-*   **Templates:**
-    *   `POST /api/templates/`: To dynamically generate HTML templates and assign them to campaign drafts.
+### Safety guarantees (important)
+- **No silent writes:** everything is approval-gated.
+- **No sending:** Nexus creates drafts only; it does not schedule or send campaigns.
+- **Demo profiles are synthetic:** seeded emails use `example.com`.
 
-## Getting Started / Setup Instructions
+---
+
+## Architecture (high-level)
+
+Frontend (Next.js) → Backend (FastAPI) → AI (OpenAI Tools) → Klaviyo API (OAuth)
+
+1. User types a request in chat
+2. Model selects a tool call (`propose_action`)
+3. UI renders an approval card
+4. On approval, backend executes (`execute_action`) against Klaviyo APIs
+5. UI shows execution trace + created resource IDs
+
+---
+
+## Klaviyo API usage (meaningful integration)
+
+This project uses Klaviyo’s API directly via `httpx` (raw JSON:API requests) to demonstrate correct, low-level control.
+
+### Endpoints used
+**Accounts**
+- `GET /api/accounts/`
+
+**Lists**
+- `GET /api/lists/`
+- `POST /api/lists/`
+- `POST /api/lists/{id}/relationships/profiles/` (attach seeded profiles)
+
+**Profiles**
+- `POST /api/profiles/` (seed demo profiles)
+
+**Campaigns**
+- `GET /api/campaigns/?filter=equals(messages.channel,'email')`
+- `POST /api/campaigns/` (create email campaign draft + campaign message)
+
+**Templates (optional)**
+- `POST /api/templates/` (create HTML template)
+  - Note: auto-assigning templates to campaign messages is currently a known limitation due to method/relationship differences by API revision; manual attach works in the UI.
+
+---
+
+## Setup / Run locally
 
 ### Prerequisites
-*   Docker & Docker Compose
-*   An OpenAI API Key
-*   Klaviyo project setup with client id / secret for auth
+- Docker + Docker Compose
+- OpenAI API key
+- A Klaviyo account with an OAuth app (Client ID/Secret)
+- A configured sender identity in Klaviyo (required to create email campaign drafts)
 
-### 1. Clone the Repository
-```bash
-git clone <repo-url>
-cd klaviyo-nexus
-```
+### Environment variables
 
-### 2. Environment Setup
-Create a `.env` file in the `backend/` directory with the following variables:
+Create `backend/.env`:
+
 ```bash
-# backend/.env
 OPENAI_API_KEY=sk-...
+
+# Klaviyo OAuth (example names; match your backend)
+KLAVIYO_CLIENT_ID=...
+KLAVIYO_CLIENT_SECRET=...
+KLAVIYO_REDIRECT_URI=http://localhost:8000/api/oauth/callback
 ```
 
-### 3. Run with Docker
-The entire application (Frontend + Backend) is containerized.
+### Run with Docker
+
 ```bash
 docker compose up --build
 ```
 
-*   **Frontend:** Accessible at `http://localhost:3000`
-*   **Backend:** Accessible at `http://localhost:8000`
+- Frontend: http://localhost:3000
+- Backend: http://localhost:8000
 
-### Manual Setup (Optional)
-If you prefer running without Docker:
+---
 
-**Backend:**
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
+## Required Klaviyo OAuth scopes
 
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Your OAuth app should request the minimum scopes needed for the demo:
 
-## Demo
+- `accounts:read`
+- `lists:read`, `lists:write`
+- `profiles:write` (needed for demo seeding)
+- `campaigns:write`, `campaigns:read`
+- (optional) `templates:write`, `templates:read`
 
-1.  **Open the App:** Navigate to `http://localhost:3000`.
-2.  **Connect:** Click "Connect Klaviyo"
-3.  **Create an Audience:**
-    *   *Type:* "Create a VIP audience for customers who spent over $300."
-    *   *Action:* Nexus will propose creating a list named "VIP Audience (demo): $300+".
-    *   *Approve:* Click the "Approve" button. Nexus will create the list and seed it with dummy profiles.
-4.  **Draft a Campaign:**
-    *   *Type:* "Draft a campaign for this new VIP list offering 20% off."
-    *   *Action:* Nexus will propose a campaign draft with a subject line like "A special offer for you".
-    *   *Approve:* Click "Approve". Nexus will create the campaign and even generate a basic HTML template for it.
+If any write scope is missing, Nexus will still run read actions, but creation steps may fail with 403.
 
-## Testing / Error Handling
+---
 
-*   **API Hardening:** The `tools.py` module includes specific error handling for Klaviyo API responses (e.g., 401 Unauthorized, 403 Forbidden).
-*   **Timeouts:** Async HTTP calls use explicit timeouts to prevent the agent from hanging indefinitely.
-*   **Fallback Logic:** If a specific parameter (like `from_email`) is missing, the system attempts to use environment defaults or prompts the user, preventing crash loops.
+## Demo (copy/paste prompts)
 
-## Future Improvements
+### 1) Create VIP audience (demo seed)
+Prompt:
+> Create a VIP audience for customers who spent at least $300. Seed 3 demo VIP profiles.
 
-*   **Real OAuth Flow:** Fully implement the OAuth handshake to allow any Klaviyo user to securely connect their account.
-*   **RAG Integration:** Ingest Klaviyo Help Center docs so the agent can answer "How-to" questions in addition to performing actions.
-*   **Advanced Analytics:** Use the Reporting API to generate visual charts (e.g., revenue over time) directly in the chat interface.
+Then click **Approve & Create**.
+
+Verification in Klaviyo UI:
+- Go to **Profiles**
+- Search one seeded email printed in the trace (e.g., `vip.user1.1234@example.com`)
+- Open profile and confirm:
+  - `nexus_demo_spend_90d`
+  - `nexus_demo_is_vip`
+  - List membership includes your VIP list
+
+### 2) Create a campaign draft for that VIP list
+Prompt:
+> Create a draft email campaign called “VIP Early Access” for the VIP list we just created. Subject: “VIP Early Access: 20% off”.
+
+Then click **Approve & Create**.
+
+Verification in Klaviyo UI:
+- Go to **Campaigns**
+- Open the draft and confirm subject/sender fields are populated.
+
+---
+
+## Troubleshooting
+
+- **I don’t see seeded profiles immediately**
+  - Klaviyo UI can take ~30–60 seconds to reflect new profiles. Refresh and search again.
+- **Campaign draft creation fails**
+  - Ensure you have a sender identity configured in Klaviyo and the OAuth token includes `campaigns:write`.
+- **403 errors**
+  - Confirm your OAuth scopes include the required permissions (Profiles write is needed for seeding).
+
+---
+
+## Testing / reliability notes
+
+- Async requests use timeouts to prevent hanging.
+- Tool inputs are schema-restricted (`additionalProperties: false`) to reduce accidental or unsafe tool execution.
+- All write actions are approval-gated.
+
+(Short-term improvement: add small mocked tests around propose/execute approval logic.)
+
+---
+
+## Future improvements
+
+- **Segments (real “recipe → segment” builder):** implement VIP/Winback segments on accounts with ecommerce events.
+- **Template auto-assignment:** resolve the correct relationship method/path for the chosen API revision and attach templates programmatically.
+- **Reporting dashboards:** integrate Reporting API (campaign + flow performance over time).
+- **More recipes:** Winback, browse abandonment, post-purchase cross-sell.
+- **Hardening:** persistent storage for approvals + trace (Redis/DB), idempotency keys, rate-limit handling.
