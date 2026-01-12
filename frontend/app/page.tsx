@@ -61,7 +61,7 @@ export default function Home() {
             <div className="space-y-8">
               <Badge variant="outline" className="bg-white/50 backdrop-blur border-slate-200 px-4 py-1.5 text-sm">
                 <Sparkles className="w-3.5 h-3.5 mr-2 text-orange-500 fill-orange-500" />
-                Powered by OpenAI & Klaviyo MCP
+                Powered by OpenAI & Klaviyo APIs
               </Badge>
               
               <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1]">
@@ -95,7 +95,7 @@ export default function Home() {
                 <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
                 <div className="flex items-center gap-1.5">
                   <Cpu className="w-4 h-4 text-blue-600" />
-                  <span>MCP Server</span>
+                  <span>MCP Style Tooling</span>
                 </div>
               </div>
             </div>
